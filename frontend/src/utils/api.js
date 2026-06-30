@@ -1,4 +1,7 @@
-const B = '/api';
+// In dev, VITE_API_URL is empty and requests go to '/api' (Vite proxies to localhost:8000).
+// In production (Vercel), set VITE_API_URL to your Render backend URL, e.g.
+//   https://anchor-backend.onrender.com
+const B = (import.meta.env.VITE_API_URL || '') + '/api';
 
 export async function uploadFile(file) {
   const f = new FormData();

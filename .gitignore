@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+frontend/node_modules/
+
+# python
+backend/venv/
+backend/__pycache__/
+backend/pipeline/__pycache__/
+*.pyc
+
+# build output
+frontend/dist/
+dist/
+
+# env / secrets
+.env
+*.env
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/

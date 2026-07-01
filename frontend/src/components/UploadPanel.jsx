@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { uploadFile } from '../utils/api';
 
 export default function UploadPanel({ onUploaded, uploadInfo }) {
   const ref = useRef(null);
@@ -10,10 +11,8 @@ export default function UploadPanel({ onUploaded, uploadInfo }) {
     if (!file) return;
     setLoading(true); setErr('');
     try {
-      const f = new FormData(); f.append('file', file);
-      const r = await fetch('/api/upload', { method: 'POST', body: f });
-      if (!r.ok) throw new Error((await r.json()).detail);
-      onUploaded(await r.json());
+      const data = await uploadFile(file);
+      onUploaded(data);
     } catch (e) { setErr(e.message); } finally { setLoading(false); }
   };
 
@@ -91,8 +90,8 @@ const done = {
 const doneLeft = { display: 'flex', alignItems: 'center', gap: '14px' };
 const checkOrb = {
   width: '40px', height: '40px', borderRadius: '50%',
-  background: 'rgba(91,227,160,0.1)',
-  border: '1px solid rgba(91,227,160,0.25)',
+  background: 'rgba(125,255,159,0.1)',
+  border: '1px solid rgba(125,255,159,0.25)',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
 };
 const fname = { fontSize: '14px', color: 'var(--ink)', fontWeight: 500 };
@@ -132,8 +131,8 @@ const fmtChip = {
 const errMsg = {
   color: 'var(--bad)', fontSize: '13px',
   marginTop: '10px', padding: '10px 14px',
-  background: 'rgba(255,125,138,0.08)',
-  border: '1px solid rgba(255,125,138,0.2)',
+  background: 'rgba(255,125,125,0.08)',
+  border: '1px solid rgba(255,125,125,0.2)',
   borderRadius: '10px',
 };
 const spinner = {

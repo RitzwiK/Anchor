@@ -1,167 +1,184 @@
-# CPA — Causal Prompt Anchoring
+# Anchor
 
-**Grounding LLM-Generated Business Anomaly Explanations in Discovered Causal Structure**
+**Causal Prompt Anchoring for business anomaly explanation**
 
-A full-stack system that detects anomalies in business data, discovers causal relationships, and generates trustworthy natural-language explanations where every causal claim maps to a validated edge in the discovered causal graph.
+Anchor answers one question: *why did this number change?* It takes a spreadsheet of business metrics over time, finds the anomalies, works out the causal relationships between the metrics, and writes a plain-English explanation. The catch that makes it different from asking a chatbot: every causal claim in that explanation has to map to a real, validated edge in the causal graph the system discovered from your data. The model is not allowed to invent reasons.
 
----
+The idea is a split of labour. Statistics does the causal reasoning, which language models are bad at. The language model does the writing, which it is good at. Then a verification step checks the explanation claim by claim and reports the fraction that hold up, a score we call the Causal Grounding Rate.
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Frontend (React + Vite)        :5173                   │
-│  Upload → Config → Charts → DAG → Narrative + CGR       │
-└─────────────────┬───────────────────────────────────────┘
-                  │ /api proxy
-┌─────────────────▼───────────────────────────────────────┐
-│  Backend (FastAPI + Python)      :8000                   │
-│                                                         │
-│  Stage 1: STL Decomposition  (statsmodels)              │
-│  Stage 2: Anomaly Detection  (Isolation Forest)         │
-│  Stage 3: Causal Discovery   (PC + Granger + ACE)       │
-│  Stage 4: Root-Cause Tracing (backward DAG walk)        │
-│  Stage 5: CPA Generation    (LLM or template fallback)  │
-│  Verify:  CGR Computation    (assertion extraction)      │
-└─────────────────────────────────────────────────────────┘
-```
+<!-- Add a hero screenshot here -->
+<!-- ![Anchor landing page](docs/images/landing.png) -->
 
 ---
 
-## Quick Start
+## What's under the hood
 
-### Prerequisites
+The backend runs a six-stage pipeline. Only the last stage touches a language model.
 
-- Python 3.10+
-- Node.js 18+
-- (Optional) OpenAI API key for LLM-powered narratives
+| Stage | What it does | Method |
+|-------|--------------|--------|
+| Decompose | Splits each metric into trend, season, and residual so surprises stand out | STL (LOESS) |
+| Detect | Flags the residual points that don't fit, with a severity score | Isolation Forest |
+| Discover | Builds a directed causal graph with weighted edges | PC algorithm, Granger causality, ACE |
+| Trace | Walks backward from an anomaly to rank its real root causes | Contribution scoring (weight × deviation) |
+| Explain | Writes the narrative, constrained to only cite discovered edges | CPA prompt (three blocks), then an LLM |
+| Verify | Checks every causal claim against the graph | Assertion extraction and edge matching |
 
-### 1. Clone / Navigate
+The full walkthrough of the maths, in plain language with diagrams, lives on the **Theory** page in the app itself.
 
-```bash
-cd cpa-project
-```
+<!-- Add a screenshot of the causal graph / dashboard here -->
+<!-- ![Causal graph and results](docs/images/dashboard.png) -->
 
-### 2. Backend Setup
+---
+
+## Running it locally
+
+You need Python 3.11, Node 18 or newer, and optionally an LLM API key if you want model-written narratives instead of the built-in template writer.
+
+### Backend
 
 ```bash
 cd backend
 
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate        # Linux/Mac
-# venv\Scripts\activate         # Windows
+source venv/bin/activate        # Windows: venv\Scripts\activate
 
-# Install dependencies
 pip install -r requirements.txt
 
-# (Optional) Set OpenAI key
-cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
+# optional: only needed if you want LLM-written narratives
+cp .env.example .env            # then paste your key into .env
 
-# Generate sample test data
+# optional: regenerate the sample dataset
 python generate_sample_data.py
 
-# Start the API server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
-The backend runs at **http://localhost:8000**.  
-API docs at **http://localhost:8000/docs**.
+Backend is now at `http://localhost:8000`, with interactive API docs at `/docs`.
 
-### 3. Frontend Setup
+> Note on Python versions: stick to **3.11**. FastAPI and Pydantic can break on 3.14.
 
-Open a **new terminal**:
+### Frontend
+
+In a second terminal:
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
 
-The frontend runs at **http://localhost:5173**.
+Open `http://localhost:5173`.
 
-### 4. Use It
+### Try it
 
-1. Open **http://localhost:5173** in your browser
-2. Upload `backend/sample_retail_data.csv` (or your own CSV/Excel)
-3. Select **Revenue** as the target metric
-4. Select the causal variables (all are selected by default)
-5. (Optional) Paste your OpenAI API key — without it, the system uses a template-based fallback that still demonstrates the full pipeline
-6. Click **Run CPA Analysis**
-7. View results: decomposition chart, causal DAG, root causes, and the causally grounded narrative with CGR score
+1. Click **Launch app**.
+2. Upload `backend/sample_retail_data.csv`, or drop in your own CSV or Excel file with a date column and a few numeric metrics.
+3. Pick the metric you want explained (Revenue in the sample).
+4. Run the analysis.
+5. Read the decomposition chart, the causal graph, the ranked root causes, and the grounded narrative with its CGR score.
 
----
+If you skip the API key, the template writer fills in the same explanation structure. It is grounded by construction, so demos work with nothing to configure.
 
-## Pipeline Stages
-
-| Stage | What It Does | Method |
-|-------|-------------|--------|
-| **S1** | Decomposes time series into trend + seasonal + residual | STL (LOESS) |
-| **S2** | Flags anomalous residuals with severity scores | Isolation Forest |
-| **S3** | Discovers causal DAG with weighted edges | PC algorithm + Granger causality + ACE |
-| **S4** | Traces anomaly backward through DAG parents | Contribution scoring (weight × deviation) |
-| **S5** | Generates explanation constrained to DAG edges | CPA prompt (Blocks A+B+C) → LLM |
-| **CGR** | Verifies every causal claim against the DAG | Dependency-parse extraction + edge matching |
+<!-- Add a screenshot of an uploaded result / narrative + CGR here -->
+<!-- ![Narrative and CGR](docs/images/narrative.png) -->
 
 ---
 
-## Key Files
+## Deployment
+
+The app splits cleanly into a static frontend and a Python backend.
+
+- **Frontend** deploys to Vercel as a Vite app. Set the project's Root Directory to `frontend`. Point it at the backend with a `VITE_API_URL` environment variable (for example `https://your-backend.onrender.com`, no trailing slash).
+- **Backend** deploys to Render as a web service. Root Directory `backend`, build `pip install -r requirements.txt`, start `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+
+A `render.yaml` and `vercel.json` are included to make both close to one-click.
+
+<!-- Add a screenshot of the deployed site here if you like -->
+<!-- ![Deployed](docs/images/deployed.png) -->
+
+---
+
+## Project layout
 
 ```
-cpa-project/
+Anchor/
 ├── backend/
-│   ├── main.py                   # FastAPI app + endpoints
+│   ├── main.py                   # FastAPI app and endpoints
 │   ├── requirements.txt
-│   ├── generate_sample_data.py   # Sample data generator
-│   ├── .env.example
+│   ├── generate_sample_data.py   # sample data generator
+│   ├── sample_retail_data.csv
 │   └── pipeline/
-│       ├── decomposition.py      # Stage 1: STL
-│       ├── anomaly.py            # Stage 2: Isolation Forest
-│       ├── causal.py             # Stage 3: PC + Granger + ACE
-│       ├── tracing.py            # Stage 4: Root-cause tracing
-│       ├── cpa.py                # Stage 5: CPA prompt + LLM
-│       └── cgr.py                # CGR verification
+│       ├── decomposition.py      # STL decomposition
+│       ├── anomaly.py            # Isolation Forest
+│       ├── causal.py            # PC, Granger, ACE
+│       ├── tracing.py           # backward root-cause walk
+│       ├── cpa.py               # CPA prompt and LLM call
+│       └── cgr.py               # CGR verification
 ├── frontend/
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── package.json
+│   ├── public/                   # favicons and static assets
 │   └── src/
 │       ├── main.jsx
-│       ├── App.jsx               # Main orchestrator
-│       ├── utils/api.js          # API client
+│       ├── App.jsx               # routing and orchestration
+│       ├── utils/api.js          # backend client
 │       └── components/
-│           ├── Header.jsx
-│           ├── Upload.jsx
+│           ├── AuroraBackground.jsx
+│           ├── Nav.jsx
+│           ├── Hero.jsx
+│           ├── UploadPanel.jsx
 │           ├── ConfigPanel.jsx
 │           ├── DecompChart.jsx
-│           ├── CausalGraph.jsx
-│           ├── RootCauses.jsx
-│           └── Narrative.jsx
+│           ├── CausalGraphPanel.jsx
+│           ├── RootCausesPanel.jsx
+│           ├── NarrativePanel.jsx
+│           ├── Theory.jsx
+│           └── ...
 └── README.md
 ```
 
 ---
 
-## API Endpoints
+## API
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
+| Method | Endpoint | What it returns |
+|--------|----------|-----------------|
 | GET | `/api/health` | Health check |
-| POST | `/api/upload` | Upload CSV/Excel, returns schema info |
-| POST | `/api/analyze` | Run full CPA pipeline |
-| GET | `/api/result` | Get last analysis result |
-| POST | `/api/regenerate` | Re-run narrative generation (CGR feedback loop) |
+| POST | `/api/upload` | Uploads a CSV or Excel file, returns the inferred schema |
+| POST | `/api/analyze` | Runs the full pipeline and returns every stage's output |
+| POST | `/api/regenerate` | Re-runs narrative generation for the CGR feedback loop |
 
 ---
 
-## Notes
+## A few things worth knowing
 
-- **Without an OpenAI key**, the system generates a template-based narrative using the same CPA structure. The causal discovery, anomaly detection, root-cause tracing, and CGR verification all work fully without any API key.
-- **With an OpenAI key**, narratives are generated by GPT-4o-mini constrained by the CPA prompt (Blocks A+B+C).
-- The sample dataset has a **known ground-truth causal structure** (see `generate_sample_data.py`) so you can verify that the pipeline discovers the correct edges.
-- For large datasets (100k+ rows), causal discovery may take 30-60 seconds.
+- Generative AI is used in exactly one place, the final narrative. Everything upstream is classical statistics. That is the whole point.
+- Without a key, the template writer produces a fully grounded narrative, so nothing about the causal discovery, anomaly detection, tracing, or CGR depends on an external service.
+- The sample dataset ships with a known ground-truth causal structure (see `generate_sample_data.py`), so you can confirm the pipeline recovers the right edges.
+- On large files (100k rows and up), causal discovery can take 30 to 60 seconds.
+
+---
+
+## Screenshots
+
+<!--
+Drop your images in a docs/images/ folder and reference them here.
+A three-up gallery reads well on GitHub:
+
+| Landing | Dashboard | Theory |
+|---------|-----------|--------|
+| ![](docs/images/landing.png) | ![](docs/images/dashboard.png) | ![](docs/images/theory.png) |
+-->
+
+_Add screenshots here._
+
+---
+
+## Author
+
+Built by Ritwik.
+
+- GitHub: [@RitzwiK](https://github.com/RitzwiK)
+- LinkedIn: [ritwikk03](https://linkedin.com/in/ritwikk03)

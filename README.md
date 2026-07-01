@@ -11,7 +11,7 @@ The idea is a split of labour. Statistics does the causal reasoning, which langu
 
 ---
 
-## What's under the hood
+## The Whole Pipeline
 
 The backend runs a six-stage pipeline. Only the last stage touches a language model.
 
